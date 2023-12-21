@@ -160,10 +160,6 @@ int solve(std::ifstream& inputFile) {
                     if (localGears.size() > 0) {
                         for (Cell* gear : localGears) {
                             gear->gearValue *= vectorToInt(intStack);
-                            if (gear->gearAdjacencies > 2) {
-                                int test = 3;
-                            }
-
                             gear->gearAdjacencies++;
                             gears.insert(gear);
                         }
