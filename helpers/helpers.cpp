@@ -27,7 +27,28 @@ namespace Helpers
 		return lines;
 	}
 
-	std::vector<int> ParseStringToIntVector(const std::string& input, char separator = ' ') 
+	std::vector<std::string> splitString(const std::string& input, char delimiter) {
+		std::vector<std::string> result;
+		std::string temp;
+
+		for (char c : input) {
+			if (c != delimiter) {
+				temp += c;
+			} else {
+				result.push_back(temp);
+				temp = "";
+			}
+		}
+
+		if (!temp.empty()) {
+			result.push_back(temp);
+		}
+
+		return result;
+	}
+
+
+	std::vector<int> ParseStringToIntVector(const std::string& input, char separator) 
 	{
 		std::vector<int> result;
 		std::stringstream ss(input);
@@ -43,23 +64,18 @@ namespace Helpers
 		return result;
 	}
 
-	std::vector<long long> ParseStringToLongVector(const std::string& input, char separator = ' ') 
+	std::vector<long long> ParseStringToLongVector(const std::string& input, char separator) 
 	{
 		std::vector<long long> result;
 		std::stringstream ss(input);
 		std::string item;
-		printf("@ParseStringToLongVector::input: %s\n", input.c_str());
 		while (std::getline(ss, item, separator)) {
 			try {
-				printf("@ParseStringToLongVector::item: %s\n", item.c_str());
 				result.push_back(std::stol(item));
-				printf("@ParseStringToLongVector::result: %lld\n", result.back());
 			} catch (...) {
 			}
 		}
-		for (long long val : result) {
-			printf("@ParseStringToLongVector::val: %lld\n", val);
-		}
+
 		return result;
 	}
 
