@@ -32,10 +32,6 @@ struct Pos {
     void Print() {
         printf("x: %d, y: %d\n", this->x, this->y);
     }
-
-    int Hash() {
-        return this->x * 1000 + this->y;
-    }
 };
 
 struct Cell {
@@ -44,6 +40,10 @@ struct Cell {
     std::vector<Cell*> adjacencies;
     int distance = -1;
     bool isInitial = false;
+    // wrapperNum: count the number of times the main loop traverses (up on the left + right on the up) - (down on the right + left on the down)
+    // determines whether the cell is contained in the loop (wrapperNum != 0 && / 4) or not (wrapperNum == 0)
+    int wrapperNum = 0; 
+    bool onLoop = false;
 
     Cell(Pos pos, char type) {
         this->pos = pos;
@@ -66,6 +66,7 @@ struct Cells {
     std::vector<int> finalPos = {-1, -1};
     int finalDistance = -1;
     std::vector<std::vector<int>> bridges;
+    std::vector<Pos> loop;
 
     Cells(std::vector<size_t> dims) {
         this->dims = dims;
@@ -199,13 +200,12 @@ struct Cells {
     void LinkCells() {
         this->GetInitialAdjacencies();
         
-        for (size_t i = 0; i < this->dims[0]; i++) {
+        for (size_t i = 0; i < this->dims[1]; i++) {
             for (size_t j = 0; j < this->dims[0]; j++) {
                 Cell* cell = this->cellMap[i][j];
                 
                 cell->adjacencies = this->GetAdjacencies(cell);
             }
-            std::cout << std::endl;
         }
     }
 
@@ -230,7 +230,7 @@ struct Cells {
         return false;
     }
 
-    void ExpandCell(Pos pos) {
+    void ExpandCell(Pos pos, std::vector<Pos> visited = {}) {
         Cell* cell = this->cellMap[pos.y][pos.x];
         std::vector<Cell*> adjacencies = cell->adjacencies;
         for (size_t i = 0; i < adjacencies.size(); i++) {
@@ -245,17 +245,92 @@ struct Cells {
 
             if (adj->distance == -1) {
                 adj->setDistance(cell->distance);
-                this->ExpandCell(adj->pos);
-            } else if (adj->distance == 0) {
+                visited.push_back(adj->pos);
+                // clone visited
+                std::vector newVisited(visited);
+                this->ExpandCell(adj->pos, visited);
+            } else if (adj->distance == 0) { // if returning to starting cell
+                std::vector<Pos> finalVisited(visited);
+                finalVisited.push_back(Pos(this->initialPos[0], this->initialPos[1]));
+                this->loop = finalVisited;
                 this->finalDistance = (cell->distance + 1) / 2;
+                
+                this->SetLoop();
             }
         }
     }
 
     void CalculateDistances() {
-        this->ExpandCell(Pos(this->initialPos[0], this->initialPos[1]));
+        Pos initialPos = Pos(this->initialPos[0], this->initialPos[1]);
+        this->ExpandCell(initialPos, { initialPos });
     }
 
+    void IncrementWrapperNums(Pos prev, Pos posStart, Pos posEnd) {
+        Cell* cell = this->cellMap[posStart.y][posStart.x];
+        bool exitDown = posStart.y < posEnd.y;
+        bool exitUp = posStart.y > posEnd.y;
+        bool exitLeft = posStart.x > posEnd.x;
+        bool exitRight = posStart.x < posEnd.x;
+        bool enterDown = prev.y > posStart.y;
+        bool enterUp = prev.y < posStart.y;
+        bool enterLeft = prev.x < posStart.x;
+        bool enterRight = prev.x > posStart.x;
+
+        if (exitDown || enterUp) {
+            for (size_t i = 0; i < posStart.x; i++) {
+                Cell* cell = this->cellMap[posStart.y][i];
+                cell->wrapperNum += 1 * exitDown + 1 * enterUp;
+            }
+
+            for (size_t i = posStart.x + 1; i < this->dims[0]; i++) {
+                Cell* cell = this->cellMap[posStart.y][i];
+                cell->wrapperNum -= 1 * exitDown + 1 * enterUp;
+            }
+        } 
+        if (exitUp || enterDown) {
+            for (size_t i = 0; i < posStart.x; i++) {
+                Cell* cell = this->cellMap[posStart.y][i];
+                cell->wrapperNum -= 1 * exitUp + 1 * enterDown;
+            }
+
+            for (size_t i = posStart.x + 1; i < this->dims[0]; i++) {
+                Cell* cell = this->cellMap[posStart.y][i];
+                cell->wrapperNum += 1 * exitUp + 1 * enterDown;
+            }
+        } 
+        if (exitLeft || enterRight) {
+            for (size_t i = 0; i < posStart.y; i++) {
+                Cell* cell = this->cellMap[i][posStart.x];
+                cell->wrapperNum += 1 * exitLeft + 1 * enterRight;
+            }
+
+            for (size_t i = posStart.y + 1; i < this->dims[1]; i++) {
+                Cell* cell = this->cellMap[i][posStart.x];
+                cell->wrapperNum -= 1 * exitLeft + 1 * enterRight;
+            }
+        }
+        if (exitRight || enterLeft) {
+            for (size_t i = 0; i < posStart.y; i++) {
+                Cell* cell = this->cellMap[i][posStart.x];
+                cell->wrapperNum -= 1 * exitRight + 1 * enterLeft;
+            }
+
+            for (size_t i = posStart.y + 1; i < this->dims[1]; i++) {
+                Cell* cell = this->cellMap[i][posStart.x];
+                cell->wrapperNum += 1 * exitRight + 1 * enterLeft;
+            }
+        }
+    }
+
+    void SetLoop() {
+        for (size_t i = 0; i < this->loop.size(); i++) {
+            Pos pos = this->loop[i];
+            Cell* cell = this->cellMap[pos.y][pos.x];
+            cell->onLoop = true;
+        }
+    }
+
+    // TODO: doesn't adjust for variable length of numbers
     void LogDistances() {
         for (size_t i = 0; i < this->dims[1]; i++) {
             for (size_t j = 0; j < this->dims[0]; j++) {
@@ -265,6 +340,21 @@ struct Cells {
                     Logger.log("");
                 } else {
                     Logger.log(" ");
+                }
+            }
+            Logger.log("\n");
+        }
+    }
+
+    void LogWrapperNums() {
+        for (size_t i = 0; i < this->dims[1]; i++) {
+            for (size_t j = 0; j < this->dims[0]; j++) {
+                Cell* cell = this->cellMap[i][j];
+                if (cell->onLoop) {
+                    std::string stringType(1, cell->type);
+                    Logger.log(stringType + " ");
+                } else {
+                    Logger.log(std::to_string(cell->wrapperNum) + " ");
                 }
             }
             Logger.log("\n");
@@ -295,6 +385,39 @@ void partA( std::vector<std::string>& input) {
     std::cout << "Value: " << value << std::endl;
 }
 
+void partB( std::vector<std::string>& input) {
+    std::vector<size_t> dims = {input[0].size(), input.size()};
+    Cells cells = Cells(dims);
+
+    for (size_t i = 0; i < input.size(); i++) {
+        for (size_t j = 0; j < input[i].size(); j++) {
+            Pos pos = Pos(j, i);
+            cells.AddCell(pos, input[i][j]);
+        }
+    }
+
+    cells.LinkCells();
+
+    cells.CalculateDistances();
+
+    cells.loop.insert(cells.loop.begin(), cells.loop[cells.loop.size()-2]);
+    for (size_t i = 1; i < cells.loop.size() - 1; i++) { // initial cell is visited twice so we can ignore the last cell
+        cells.IncrementWrapperNums(cells.loop[i-1], cells.loop[i], cells.loop[i+1]);
+    }
+
+    cells.LogWrapperNums();
+
+    int value = 0;
+    for (size_t i = 0; i < cells.dims[1]; i++) {
+        for (size_t j = 0; j < cells.dims[0]; j++) {
+            Cell* cell = cells.cellMap[i][j];
+            if (cell->wrapperNum != 0 && !cell->onLoop) {
+                value++;
+            }
+        }
+    }
+    std::cout << "Value: " << value << std::endl;
+}
 int main() {
     std::string inputPath = sample ? "./day" + day + "/sample" : "./day" + day + "/input";
     std::filesystem::path inputFile(inputPath);
@@ -303,6 +426,6 @@ int main() {
     printf("input: %s\n", input[0].c_str());
 
 
-    partA(input);
-    // partB(input);
+    // partA(input);
+    partB(input);
 }
